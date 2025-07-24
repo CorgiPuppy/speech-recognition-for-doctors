@@ -122,7 +122,7 @@ class MedicalVoiceParser:
     def showPulse(self):
         try:
             text = self.speakArea.get('1.0', 'end-1c')
-            pulse = re.search('(?:пульс|ЧСС)\D*(\d{2,3})', text)
+            pulse = re.search('(?:пульс|ЧСС)\D*(\d{2,3})', text, re.IGNORECASE)
             self.pulseArea.delete('1.0', tk.END)
             self.pulseArea.insert(tk.END, pulse.group(1))
             self.recordPulse(pulse.group(1))
@@ -143,7 +143,7 @@ class MedicalVoiceParser:
     def showSaturation(self):
         try:
             text = self.speakArea.get('1.0', 'end-1c')
-            saturation = re.search('(?:сатурация|SpO2)\D*(\d{1,2})', text)
+            saturation = re.search('(?:сатурация|SpO2)\D*(\d{1,2})', text, re.IGNORECASE)
             self.saturationArea.delete('1.0', tk.END)
             self.saturationArea.insert(tk.END, saturation.group(1))
             self.recordSaturation(saturation.group(1))
@@ -157,7 +157,7 @@ class MedicalVoiceParser:
         if "hemodynamics" not in self.medicalData:
             self.medicalData["hemodynamics"] = {}
 
-        self.medicalData["hemodynamics"]["saturation"]= {
+        self.medicalData["hemodynamics"]["saturation"] = {
             "value": saturationValue
         }
 
@@ -175,33 +175,40 @@ class MedicalVoiceParser:
                 self.writeDataToJsonFile(pathToFile)
 
                 typstDocument = f'''#set text(
-    font: "Times New Roman"
+    font: "Times New Roman",
+    size: 15pt,
 )
+
+#align(
+    center,
+)[ = Заключение врача ]
+#linebreak()
 
 #let jsonData = json("''' + nameOfFile + '''.json")
 #for value in jsonData {
     if "name" in value {
         if value.name != "" {
-            [ *ФИО пациента*: #value.name.lastName #value.name.firstName #value.name.middleName ]
+            [ *Пациент*: #value.name.lastName #value.name.firstName #value.name.middleName ]
+            linebreak()
         }
     }
-    linebreak()
     if "hemodynamics" in value {
         if "blood_pressure" in value.hemodynamics {
             if value.hemodynamics.blood_pressure != "" {
                 [ *Давление*: #value.hemodynamics.blood_pressure.systolic/#value.hemodynamics.blood_pressure.diastolic мм рт. ст. ]
+                linebreak()
             }
         }
-        linebreak()
         if "heart_rate" in value.hemodynamics {
             if value.hemodynamics.heart_rate != "" {
                 [ *Пульс*: #value.hemodynamics.heart_rate.value уд/мин. ]
+                linebreak()
             }
         } 
-        linebreak()
         if "saturation" in value.hemodynamics {
             if value.hemodynamics.saturation != "" {
                 [ *SpO2*: #value.hemodynamics.saturation.value% ]
+                linebreak()
             }
         } 
     }
