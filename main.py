@@ -43,6 +43,13 @@ class MedicalVoiceParser:
         self.showPulseButton = tk.Button(master=window, text='Показать пульс', command=self.showPulse)
         self.showPulseButton.grid(column=3, row=4)
 
+        self.saturationLabel = tk.Label(master=self.root, text="SpO2:")
+        self.saturationLabel.grid(column=1, row=5)
+        self.saturationArea = tk.Text(master=self.root, height=1, width=30)
+        self.saturationArea.grid(column=2, row=5)
+        self.showPulseButton = tk.Button(master=window, text='Показать сатурацию', command=self.showSaturation)
+        self.showPulseButton.grid(column=3, row=5)
+
         self.selectFolder = tk.Button(master=self.root, text="Выбрать папку для записи отчётов", command=self.selectFolder)
         self.selectFolder.grid(column=1, row=6)
         self.folderArea = tk.Text(master=self.root, height=1, width=60)
@@ -133,6 +140,27 @@ class MedicalVoiceParser:
             "value": pulseValue
         }
 
+    def showSaturation(self):
+        try:
+            text = self.speakArea.get('1.0', 'end-1c')
+            saturation = re.search('(?:сатурация|SpO2)\D*(\d{1,2})', text)
+            self.saturationArea.delete('1.0', tk.END)
+            self.saturationArea.insert(tk.END, saturation.group(1))
+            self.recordSaturation(saturation.group(1))
+
+        except AttributeError:
+            saturationErrorLabel = tk.Label(master=self.root, text="Скажите SpO2 пациента в формате: <сатурация> или <SpO2> <Значение>", fg="red")
+            saturationErrorLabel.grid(column=4, row=5)
+            saturationErrorLabel.after(5000, saturationErrorLabel.destroy)
+    
+    def recordSaturation(self, saturationValue):
+        if "hemodynamics" not in self.medicalData:
+            self.medicalData["hemodynamics"] = {}
+
+        self.medicalData["hemodynamics"]["saturation"]= {
+            "value": saturationValue
+        }
+
     def selectFolder(self):
         sourcePath = filedialog.askdirectory(title='Выберите папку для записи отчётов')
         self.folderArea.insert(tk.END, sourcePath)
@@ -154,20 +182,26 @@ class MedicalVoiceParser:
 #for value in jsonData {
     if "name" in value {
         if value.name != "" {
-            [ *Имя пациента*: #value.name.lastName #value.name.firstName #value.name.middleName ]
+            [ *ФИО пациента*: #value.name.lastName #value.name.firstName #value.name.middleName ]
         }
     }
     linebreak()
     if "hemodynamics" in value {
         if "blood_pressure" in value.hemodynamics {
             if value.hemodynamics.blood_pressure != "" {
-                [ *Давление*: #value.hemodynamics.blood_pressure.systolic/#value.hemodynamics.blood_pressure.diastolic мм рт. ст.]
+                [ *Давление*: #value.hemodynamics.blood_pressure.systolic/#value.hemodynamics.blood_pressure.diastolic мм рт. ст. ]
             }
         }
         linebreak()
         if "heart_rate" in value.hemodynamics {
             if value.hemodynamics.heart_rate != "" {
-                [ *Пульс*: #value.hemodynamics.heart_rate.value ]
+                [ *Пульс*: #value.hemodynamics.heart_rate.value уд/мин. ]
+            }
+        } 
+        linebreak()
+        if "saturation" in value.hemodynamics {
+            if value.hemodynamics.saturation != "" {
+                [ *SpO2*: #value.hemodynamics.saturation.value% ]
             }
         } 
     }
