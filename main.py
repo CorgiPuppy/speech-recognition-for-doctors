@@ -15,25 +15,24 @@ class MedicalVoiceParser:
     def setup_ui(self):
         self.root.title("Медицинский голосовой парсер")
 
-        self.label = tk.Label(master=self.root, text="Говорите..")
-        self.label.grid(column=1, row=1)
-
-        self.textArea = tk.Text(master=self.root, height=2, width=30)
-        self.textArea.grid(column=2, row=1)
-
+        self.speakLabel = tk.Label(master=self.root, text="Говорите..")
+        self.speakLabel.grid(column=1, row=1)
+        self.speakArea = tk.Text(master=self.root, height=2, width=30)
+        self.speakArea.grid(column=2, row=1)
         startListeningButton = tk.Button(master=self.root, text="Начать слушать", command=self.startListening, bg="pink")
         startListeningButton.grid(column=3, row=1)
 
         self.nameOfPatient = tk.Label(master=self.root, text="ФИО пациента:")
         self.nameOfPatient.grid(column=1, row=2)
-        self.resultArea = tk.Text(master=self.root, height=1, width=30)
-        self.resultArea.grid(column=2, row=2)
-
+        self.nameOfPatientArea = tk.Text(master=self.root, height=1, width=30)
+        self.nameOfPatientArea.grid(column=2, row=2)
         self.showNameOfPatientButton = tk.Button(master=window, text='Показать имя', command=self.showNameOfPatient)
         self.showNameOfPatientButton.grid(column=3, row=2)
 
-        self.selectFolder = tk.Button(master=self.root, text="Выбрать папку для записи отчётов", command=self.createFolder)
+        self.selectFolder = tk.Button(master=self.root, text="Выбрать папку для записи отчётов", command=self.selectFolder)
         self.selectFolder.grid(column=1, row=3)
+        self.folderArea = tk.Text(master=self.root, height=1, width=60)
+        self.folderArea.grid(column=2, row=3)
 
         self.makeReport = tk.Button(master=self.root, text="Создать отчёт", command=self.makeReport)
         self.makeReport.grid(column=1,row=4)
@@ -45,28 +44,29 @@ class MedicalVoiceParser:
 
         try:
             text = self.recognizer.recognize_google(audio, language="ru-Ru")
-            self.textArea.insert(tk.END, text)
+            self.speakArea.insert(tk.END, text)
+
         except sr.UnknownValueError:
-            errorLabel = tk.Label(master=self.root, text="Речь не распознана")
-            errorLabel.grid(column=4, row=1)
-            errorLabel.after(5000, errorLabel.destroy)
+            speechUnrecognizedErrorLabel = tk.Label(master=self.root, text="Речь не распознана", fg="red")
+            speechUnrecognizedErrorLabel.grid(column=4, row=1)
+            speechUnrecognizedErrorLabel.after(5000, speechUnrecognizedErrorLabel.destroy)
         except sr.RequestError as e:
-            errorLabel = tk.Label(master=self.root, text=f"Ошибка сервиса; {e}")
-            errorLabel.grid(column=4, row=1)
-            errorLabel.after(5000, errorLabel.destroy)
+            serviceErrorLabel = tk.Label(master=self.root, text=f"Ошибка сервиса; {e}", fg="red")
+            serviceErrorLabel.grid(column=4, row=1)
+            serviceErrorLabel.after(5000, serviceErrorLabel.destroy)
 
     def showNameOfPatient(self):
         try:
-            text = self.textArea.get('1.0', 'end-1c')
+            text = self.speakArea.get('1.0', 'end-1c')
             nameOfPatient = re.search('(?:пациент|больной)\s([А-ЯЁ][а-яё]+\s[А-ЯЁ][а-яё]+\s[А-ЯЁ][а-яё]+)', text)
-            self.resultArea.delete('1.0', tk.END)
-            self.resultArea.insert(tk.END, nameOfPatient.group(1))
+            self.nameOfPatientArea.delete('1.0', tk.END)
+            self.nameOfPatientArea.insert(tk.END, nameOfPatient.group(1))
             self.recordNameOfPatient(nameOfPatient.group(1))
 
         except AttributeError:
-            errorLabel = tk.Label(master=self.root, text="Скажите ФИО пациента в формате: <пациент> <Фамилия> <Имя> <Отчество>")
-            errorLabel.grid(column=4, row=2)
-            errorLabel.after(5000, errorLabel.destroy)
+            nameErrorLabel = tk.Label(master=self.root, text="Скажите ФИО пациента в формате: <пациент> <Фамилия> <Имя> <Отчество>", fg="red")
+            nameErrorLabel.grid(column=4, row=2)
+            nameErrorLabel.after(5000, nameErrorLabel.destroy)
     
     def recordNameOfPatient(self, name):
         nameOfPatientList = name.split()
@@ -76,17 +76,20 @@ class MedicalVoiceParser:
             'middleName': nameOfPatientList[2],
         }
  
-    def createFolder(self):
-        soursePath = filedialog.askdirectory(title='Выберите папку для записи отчётов')
-        path = os.path.join(soursePath, 'Отчёты')
-        os.makedirs(path)   
+    def selectFolder(self):
+        sourcePath = filedialog.askdirectory(title='Выберите папку для записи отчётов')
+        self.folderArea.insert(tk.END, sourcePath)
 
     def makeReport(self):
-        nameOfReportFile = ' '.join(self.medicalData["name"].values())
-        nameOfFile = re.sub('\s', '_', nameOfReportFile.upper())
-        self.writeDataToJsonFile(nameOfFile)
+        try:
+            if self.folderArea.compare('end-1c', '!=', '1.0'):
+                folder = self.folderArea.get('1.0', 'end-1c')
+                nameOfReportFile = ' '.join(self.medicalData["name"].values())
+                nameOfFile = re.sub('\s', '_', nameOfReportFile.upper())
+                pathToFile = folder + '/' + nameOfFile
+                self.writeDataToJsonFile(pathToFile)
 
-        typstDocument = f'''#set text(
+                typstDocument = f'''#set text(
     font: "Times New Roman"
 )
 
@@ -98,13 +101,23 @@ class MedicalVoiceParser:
 }
 '''
 
-        nameOfTypstFile = nameOfFile + '.typ'
-        with open(nameOfTypstFile, "w", encoding='utf8') as typstFile:
-            typstFile.write(typstDocument)
+                nameOfTypstFile = pathToFile + '.typ'
+                with open(nameOfTypstFile, "w", encoding='utf8') as typstFile:
+                    typstFile.write(typstDocument)
 
-        nameOfPdfFile = nameOfFile + '.pdf'
-        os.system('typst compile {reportTYP} {reportPDF}'.format(reportTYP=nameOfTypstFile, reportPDF=nameOfPdfFile))
+                nameOfPdfFile = pathToFile + '.pdf'
+                os.system('typst compile {reportTYP} {reportPDF}'.format(reportTYP=nameOfTypstFile, reportPDF=nameOfPdfFile))
 
+            else:
+                folderErrorLabel = tk.Label(master=self.root, text="Не выбрана папка", fg="red")
+                folderErrorLabel.grid(column=2, row=4)
+                folderErrorLabel.after(5000, folderErrorLabel.destroy)
+    
+        except KeyError:
+            keyErrorLabel = tk.Label(master=self.root, text="Нет имени пациента", fg="red")
+            keyErrorLabel.grid(column=2, row=4)
+            keyErrorLabel.after(5000, keyErrorLabel.destroy)
+            
     def writeDataToJsonFile(self, nameOfFile):
         nameOfJsonFile = nameOfFile + '.json'
         with open(nameOfJsonFile, "w", encoding='utf8') as jsonFile:
