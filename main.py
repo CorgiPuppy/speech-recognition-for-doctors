@@ -29,6 +29,13 @@ class MedicalVoiceParser:
         self.showNameOfPatientButton = tk.Button(master=window, text='Показать имя', command=self.showNameOfPatient)
         self.showNameOfPatientButton.grid(column=3, row=2)
 
+        self.pressureLabel = tk.Label(master=self.root, text="Давление:")
+        self.pressureLabel.grid(column=1, row=3)
+        self.pressureArea = tk.Text(master=self.root, height=1, width=30)
+        self.pressureArea.grid(column=2, row=3)
+        self.showPressureButton = tk.Button(master=window, text='Показать давление', command=self.showPressure)
+        self.showPressureButton.grid(column=3, row=3)
+
         self.pulseLabel = tk.Label(master=self.root, text="Пульс:")
         self.pulseLabel.grid(column=1, row=4)
         self.pulseArea = tk.Text(master=self.root, height=1, width=30)
@@ -51,7 +58,7 @@ class MedicalVoiceParser:
 
         try:
             text = self.recognizer.recognize_google(audio, language="ru-Ru")
-            self.speakArea.insert(tk.END, text)
+            self.speakArea.insert(tk.END, text + ' ')
 
         except sr.UnknownValueError:
             speechUnrecognizedErrorLabel = tk.Label(master=self.root, text="Речь не распознана", fg="red")
@@ -83,6 +90,28 @@ class MedicalVoiceParser:
             'middleName': nameOfPatientList[2],
         }
  
+    def showPressure(self):
+        try:
+            text = self.speakArea.get('1.0', 'end-1c')
+            pressure = re.search('(?:давление|АД)\D*(\d{2,3})\s*(?:на|\/)\s*(\d{2,3})', text, re.IGNORECASE)
+            self.pressureArea.delete('1.0', tk.END)
+            self.pressureArea.insert(tk.END, f"{pressure.group(1)}/{pressure.group(2)}")
+            self.recordPressure(pressure.group(1), pressure.group(2))
+
+        except AttributeError:
+            pressureErrorLabel = tk.Label(master=self.root, text="Скажите давление пациента в формате: <давление> <Систолическое> на <Диастолическое>", fg="red")
+            pressureErrorLabel.grid(column=4, row=3)
+            pressureErrorLabel.after(5000, pressureErrorLabel.destroy)
+    
+    def recordPressure(self, systolicValue, diastolicValue):
+        if "hemodynamics" not in self.medicalData:
+            self.medicalData["hemodynamics"] = {}
+
+        self.medicalData["hemodynamics"]["blood_pressure"] = {
+            "systolic": systolicValue,
+            "diastolic": diastolicValue
+        }
+
     def showPulse(self):
         try:
             text = self.speakArea.get('1.0', 'end-1c')
@@ -92,27 +121,18 @@ class MedicalVoiceParser:
             self.recordPulse(pulse.group(1))
 
         except AttributeError:
-            pulseErrorLabel = tk.Label(master=self.root, text="Скажите пульс пациента в формате: <пациент> или <ЧСС> <Значение>", fg="red")
-            pulseErrorLabel.grid(column=4, row=3)
+            pulseErrorLabel = tk.Label(master=self.root, text="Скажите пульс пациента в формате: <пульс> или <ЧСС> <Значение>", fg="red")
+            pulseErrorLabel.grid(column=4, row=4)
             pulseErrorLabel.after(5000, pulseErrorLabel.destroy)
     
     def recordPulse(self, pulseValue):
-        def writeValue():
-            self.medicalData.update({
-                "hemodynamics": {
-                    "heart_rate": {
-                        "value": pulseValue
-                    }
-                }
-            })
-
-        if "hemodynamics" in self.medicalData:
-            writeValue()
-        else:
+        if "hemodynamics" not in self.medicalData:
             self.medicalData["hemodynamics"] = {}
-            writeValue()
 
- 
+        self.medicalData["hemodynamics"]["heart_rate"]= {
+            "value": pulseValue
+        }
+
     def selectFolder(self):
         sourcePath = filedialog.askdirectory(title='Выберите папку для записи отчётов')
         self.folderArea.insert(tk.END, sourcePath)
@@ -139,11 +159,17 @@ class MedicalVoiceParser:
     }
     linebreak()
     if "hemodynamics" in value {
+        if "blood_pressure" in value.hemodynamics {
+            if value.hemodynamics.blood_pressure != "" {
+                [ *Давление*: #value.hemodynamics.blood_pressure.systolic/#value.hemodynamics.blood_pressure.diastolic мм рт. ст.]
+            }
+        }
+        linebreak()
         if "heart_rate" in value.hemodynamics {
             if value.hemodynamics.heart_rate != "" {
                 [ *Пульс*: #value.hemodynamics.heart_rate.value ]
             }
-        }
+        } 
     }
 }'''
 
