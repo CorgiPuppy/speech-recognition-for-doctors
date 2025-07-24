@@ -174,24 +174,37 @@ class MedicalVoiceParser:
                 pathToFile = folder + '/' + nameOfFile
                 self.writeDataToJsonFile(pathToFile)
 
-                typstDocument = f'''#set text(
-    font: "Times New Roman",
-    size: 15pt,
+                typstDocument = f'''#set page(
+    paper: "a4",
+    margin: 2cm
 )
 
-#align(
-    center,
-)[ = Заключение врача ]
-#linebreak()
+#set text(
+    font: ("Times New Roman", "Libertinus Serif"),
+    size: 12pt,
+)
+
+#align(center)[
+    #text(weight: "bold", size: 16pt)[МЕДИЦИНСКОЕ ЗАКЛЮЧЕНИЕ]
+    #linebreak()
+    #text(style: "italic", size: 10pt)[Дата: #datetime.today().display("[day].[month].[year]")]
+]
 
 #let jsonData = json("''' + nameOfFile + '''.json")
 #for value in jsonData {
-    if "name" in value {
-        if value.name != "" {
-            [ *Пациент*: #value.name.lastName #value.name.firstName #value.name.middleName ]
-            linebreak()
+    block(
+        fill: rgb("#f0f0f0"),
+        inset: 8pt,
+        radius: 4pt,
+        stroke: (left: 2pt + blue)
+    )[
+        #if "name" in value {
+            if value.name != "" {
+                text(weight: "bold")[ПАЦИЕНТ:]
+                [ #value.name.lastName #value.name.firstName #value.name.middleName ]
+            }
         }
-    }
+    ] 
     if "hemodynamics" in value {
         if "blood_pressure" in value.hemodynamics {
             if value.hemodynamics.blood_pressure != "" {
@@ -211,7 +224,61 @@ class MedicalVoiceParser:
                 linebreak()
             }
         } 
+
+        block(
+            fill: rgb("#f8f8f8"),
+            inset: 12pt,
+            radius: 4pt,
+            stroke: 0.5pt + black
+        )[
+            #text(weight: "bold")[ЗАКЛЮЧЕНИЕ:]
+            #linebreak()
+            На основании проведённого осмотра и показателей гемодинамики:
+
+            #if "blood_pressure" in value.hemodynamics {
+                let sys = int(value.hemodynamics.blood_pressure.systolic)
+                let dia = int(value.hemodynamics.blood_pressure.diastolic)
+                if sys < 90 or dia < 60 {
+                    [ - Артериальное давление снижено (гипотензия) ]
+                } else if sys > 140 or dia > 100 {
+                    [ - Артериальное давление повышено (гипертензия) ]
+                } else {
+                    [ - Артериальное давление в пределах нормы ]
+                }
+            } 
+            #if "heart_rate" in value.hemodynamics {
+                let hr = int(value.hemodynamics.heart_rate.value)
+                if hr < 60 {
+                    [ - Брахикардия ]
+                } else if hr > 100 {
+                    [ - Тахикардия ]
+                } else {
+                    [ - ЧСС в пределах нормы ]
+                }
+            }
+            #if "saturation" in value.hemodynamics {
+                let spo2 = int(value.hemodynamics.saturation.value)
+                if spo2 < 95 {
+                    [ - Сниженная сатурация кислорода ]
+                } else {
+                    [ - Сатурация кислорода в пределах нормы ]
+                }
+            }
+        ]
+
+        linebreak()
+        text(weight: "bold")[РЕКОМЕНДАЦИИ:]
+        linebreak()
+        list(
+            [ Контроль показателей гемодинамики ],
+            [ При ухудшении состояния - обратиться к врачу ]
+        )
     }
+
+    align(right)[
+        #line(length: 6cm)
+        #text(style: "italic")[Врач-специалист]
+    ]
 }'''
 
                 nameOfTypstFile = pathToFile + '.typ'
