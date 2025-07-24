@@ -22,20 +22,27 @@ class MedicalVoiceParser:
         startListeningButton = tk.Button(master=self.root, text="Начать слушать", command=self.startListening, bg="pink")
         startListeningButton.grid(column=3, row=1)
 
-        self.nameOfPatient = tk.Label(master=self.root, text="ФИО пациента:")
-        self.nameOfPatient.grid(column=1, row=2)
+        self.nameOfPatientLabel = tk.Label(master=self.root, text="ФИО пациента:")
+        self.nameOfPatientLabel.grid(column=1, row=2)
         self.nameOfPatientArea = tk.Text(master=self.root, height=1, width=30)
         self.nameOfPatientArea.grid(column=2, row=2)
         self.showNameOfPatientButton = tk.Button(master=window, text='Показать имя', command=self.showNameOfPatient)
         self.showNameOfPatientButton.grid(column=3, row=2)
 
+        self.pulseLabel = tk.Label(master=self.root, text="Пульс:")
+        self.pulseLabel.grid(column=1, row=4)
+        self.pulseArea = tk.Text(master=self.root, height=1, width=30)
+        self.pulseArea.grid(column=2, row=4)
+        self.showPulseButton = tk.Button(master=window, text='Показать пульс', command=self.showPulse)
+        self.showPulseButton.grid(column=3, row=4)
+
         self.selectFolder = tk.Button(master=self.root, text="Выбрать папку для записи отчётов", command=self.selectFolder)
-        self.selectFolder.grid(column=1, row=3)
+        self.selectFolder.grid(column=1, row=6)
         self.folderArea = tk.Text(master=self.root, height=1, width=60)
-        self.folderArea.grid(column=2, row=3)
+        self.folderArea.grid(column=2, row=6)
 
         self.makeReport = tk.Button(master=self.root, text="Создать отчёт", command=self.makeReport)
-        self.makeReport.grid(column=1,row=4)
+        self.makeReport.grid(column=1,row=7)
 
     def startListening(self):
         with sr.Microphone() as source:
@@ -76,6 +83,36 @@ class MedicalVoiceParser:
             'middleName': nameOfPatientList[2],
         }
  
+    def showPulse(self):
+        try:
+            text = self.speakArea.get('1.0', 'end-1c')
+            pulse = re.search('(?:пульс|ЧСС)\D*(\d{2,3})', text)
+            self.pulseArea.delete('1.0', tk.END)
+            self.pulseArea.insert(tk.END, pulse.group(1))
+            self.recordPulse(pulse.group(1))
+
+        except AttributeError:
+            pulseErrorLabel = tk.Label(master=self.root, text="Скажите пульс пациента в формате: <пациент> или <ЧСС> <Значение>", fg="red")
+            pulseErrorLabel.grid(column=4, row=3)
+            pulseErrorLabel.after(5000, pulseErrorLabel.destroy)
+    
+    def recordPulse(self, pulseValue):
+        def writeValue():
+            self.medicalData.update({
+                "hemodynamics": {
+                    "heart_rate": {
+                        "value": pulseValue
+                    }
+                }
+            })
+
+        if "hemodynamics" in self.medicalData:
+            writeValue()
+        else:
+            self.medicalData["hemodynamics"] = {}
+            writeValue()
+
+ 
     def selectFolder(self):
         sourcePath = filedialog.askdirectory(title='Выберите папку для записи отчётов')
         self.folderArea.insert(tk.END, sourcePath)
@@ -95,11 +132,20 @@ class MedicalVoiceParser:
 
 #let jsonData = json("''' + nameOfFile + '''.json")
 #for value in jsonData {
-    if value.name != "" {
-        [ *Имя пациента*: #value.name.lastName #value.name.firstName #value.name.middleName ]
+    if "name" in value {
+        if value.name != "" {
+            [ *Имя пациента*: #value.name.lastName #value.name.firstName #value.name.middleName ]
+        }
     }
-}
-'''
+    linebreak()
+    if "hemodynamics" in value {
+        if "heart_rate" in value.hemodynamics {
+            if value.hemodynamics.heart_rate != "" {
+                [ *Пульс*: #value.hemodynamics.heart_rate.value ]
+            }
+        }
+    }
+}'''
 
                 nameOfTypstFile = pathToFile + '.typ'
                 with open(nameOfTypstFile, "w", encoding='utf8') as typstFile:
@@ -110,19 +156,18 @@ class MedicalVoiceParser:
 
             else:
                 folderErrorLabel = tk.Label(master=self.root, text="Не выбрана папка", fg="red")
-                folderErrorLabel.grid(column=2, row=4)
+                folderErrorLabel.grid(column=2, row=7)
                 folderErrorLabel.after(5000, folderErrorLabel.destroy)
     
         except KeyError:
             keyErrorLabel = tk.Label(master=self.root, text="Нет имени пациента", fg="red")
-            keyErrorLabel.grid(column=2, row=4)
+            keyErrorLabel.grid(column=2, row=7)
             keyErrorLabel.after(5000, keyErrorLabel.destroy)
             
     def writeDataToJsonFile(self, nameOfFile):
         nameOfJsonFile = nameOfFile + '.json'
         with open(nameOfJsonFile, "w", encoding='utf8') as jsonFile:
-            json.dump([{k: self.medicalData[k]} for k in self.medicalData], jsonFile, indent=4, ensure_ascii=False)
-
+            json.dump([self.medicalData], jsonFile, indent=4, ensure_ascii=False)
 
 window = tk.Tk()    # initializes Tk object called window
 app = MedicalVoiceParser(window)
