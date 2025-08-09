@@ -4,6 +4,10 @@ import re
 import json
 import os
 import threading
+import sys
+# Исправление пути к DLL для Vosk в .exe
+if hasattr(sys, '_MEIPASS'):
+    os.add_dll_directory(os.path.join(sys._MEIPASS, 'vosk'))
 from vosk import Model, KaldiRecognizer
 import pyaudio
 
@@ -11,15 +15,37 @@ class MedicalVoiceParser:
     def __init__(self, root):
         self.root = root
         self.root.title("Медицинский голосовой парсер")
-        self.root.geometry("800x600")
+        self.root.geometry("800x700")
         self.root.configure(bg="#f0f4f8")
 
+        # Динамический путь к модели Vosk
+        if hasattr(sys, '_MEIPASS'):
+            # Для .exe: путь к папке с .exe
+            base_path = os.path.dirname(sys.executable)
+        else:
+            # Для Python: путь к скрипту
+            base_path = os.path.dirname(os.path.abspath(__file__))
+        self.model_path = os.path.join(base_path, "models", "vosk-model-ru-0.42")
+
+        # Проверка наличия модели Vosk
+        if not os.path.exists(self.model_path):
+            messagebox.showerror(
+                "Ошибка",
+                f"Папка модели Vosk не найдена: {self.model_path}\n"
+                "Скачайте 'vosk-model-ru-0.42' с https://alphacephei.com/vosk/models "
+                "и поместите папку 'models' рядом с программой."
+            )
+            sys.exit(1)
+
         # Инициализация модели Vosk
-        self.model = Model("models/vosk-model-ru-0.42")
+        self.model = Model(self.model_path)
         self.recognizer = KaldiRecognizer(self.model, 16000)
         self.is_recording = False
         self.audio = pyaudio.PyAudio()
         self.stream = None
+
+        # Путь к typst.exe
+        self.typst_path = os.path.join(base_path, "typst.exe")
 
         # Список для хранения данных пациентов
         self.patients = []
@@ -43,9 +69,9 @@ class MedicalVoiceParser:
         # Стоп-слова для исключения из ФИО
         self.stop_words = {'делает', 'неосторожные', 'движения', 'есть', 'был', 'или', 'без', 'на', 'в', 'с', 'по', 'пациент', 'больной'}
 
-        self.setupUI()
+        self.setup_ui()
 
-    def setupUI(self):
+    def setup_ui(self):
         style = ttk.Style()
         style.configure("TButton", padding=6, font=("Arial", 10))
         style.configure("TLabel", font=("Arial", 10), background="#f0f4f8")
@@ -61,7 +87,7 @@ class MedicalVoiceParser:
         self.speak_area.grid(row=0, column=1, columnspan=2, pady=5)
 
         # Кнопки управления записью
-        self.record_button = ttk.Button(main_frame, text="Начать запись", command=self.startListening)
+        self.record_button = ttk.Button(main_frame, text="Начать запись", command=self.toggle_recording)
         self.record_button.grid(row=1, column=1, pady=5, sticky="w")
         ttk.Button(main_frame, text="Очистить текст", command=lambda: self.speak_area.delete("1.0", tk.END)).grid(row=1, column=2, pady=5, sticky="w")
 
@@ -69,22 +95,22 @@ class MedicalVoiceParser:
         ttk.Label(main_frame, text="ФИО пациента:").grid(row=2, column=0, sticky="w", pady=5)
         self.name_entry = ttk.Entry(main_frame, width=60)
         self.name_entry.grid(row=2, column=1, columnspan=2, pady=5)
-        ttk.Button(main_frame, text="Извлечь ФИО", command=self.extractName).grid(row=2, column=3, pady=5)
+        ttk.Button(main_frame, text="Извлечь ФИО", command=self.extract_name).grid(row=2, column=3, pady=5)
 
         ttk.Label(main_frame, text="Давление (мм рт. ст.):").grid(row=3, column=0, sticky="w", pady=5)
         self.pressure_entry = ttk.Entry(main_frame, width=60)
         self.pressure_entry.grid(row=3, column=1, columnspan=2, pady=5)
-        ttk.Button(main_frame, text="Извлечь давление", command=self.extractPressure).grid(row=3, column=3, pady=5)
+        ttk.Button(main_frame, text="Извлечь давление", command=self.extract_pressure).grid(row=3, column=3, pady=5)
 
         ttk.Label(main_frame, text="Пульс (уд/мин):").grid(row=4, column=0, sticky="w", pady=5)
         self.pulse_entry = ttk.Entry(main_frame, width=60)
         self.pulse_entry.grid(row=4, column=1, columnspan=2, pady=5)
-        ttk.Button(main_frame, text="Извлечь пульс", command=self.extractPulse).grid(row=4, column=3, pady=5)
+        ttk.Button(main_frame, text="Извлечь пульс", command=self.extract_pulse).grid(row=4, column=3, pady=5)
 
         ttk.Label(main_frame, text="SpO2 (%):").grid(row=5, column=0, sticky="w", pady=5)
         self.saturation_entry = ttk.Entry(main_frame, width=60)
         self.saturation_entry.grid(row=5, column=1, columnspan=2, pady=5)
-        ttk.Button(main_frame, text="Извлечь сатурацию", command=self.extractSaturation).grid(row=5, column=3, pady=5)
+        ttk.Button(main_frame, text="Извлечь сатурацию", command=self.extract_saturation).grid(row=5, column=3, pady=5)
 
         # Таблица для отображения записей
         ttk.Label(main_frame, text="Список пациентов:").grid(row=6, column=0, sticky="w", pady=5)
@@ -100,36 +126,36 @@ class MedicalVoiceParser:
         self.tree.grid(row=6, column=1, columnspan=3, pady=5)
 
         # Кнопки управления записями
-        ttk.Button(main_frame, text="Добавить запись", command=self.addRecord).grid(row=7, column=1, pady=5, sticky="w")
-        ttk.Button(main_frame, text="Удалить запись", command=self.deleteRecord).grid(row=7, column=2, pady=5, sticky="w")
-        ttk.Button(main_frame, text="Редактировать запись", command=self.editRecord).grid(row=7, column=3, pady=5, sticky="w")
+        ttk.Button(main_frame, text="Добавить запись", command=self.add_record).grid(row=7, column=1, pady=5, sticky="w")
+        ttk.Button(main_frame, text="Удалить запись", command=self.delete_record).grid(row=7, column=2, pady=5, sticky="w")
+        ttk.Button(main_frame, text="Редактировать запись", command=self.edit_record).grid(row=7, column=3, pady=5, sticky="w")
 
         # Папка для сохранения
         ttk.Label(main_frame, text="Папка для отчётов:").grid(row=8, column=0, sticky="w", pady=5)
         self.folder_entry = ttk.Entry(main_frame, width=60)
         self.folder_entry.grid(row=8, column=1, columnspan=2, pady=5)
-        ttk.Button(main_frame, text="Выбрать папку", command=self.selectFolder).grid(row=8, column=3, pady=5)
+        ttk.Button(main_frame, text="Выбрать папку", command=self.select_folder).grid(row=8, column=3, pady=5)
 
         # Кнопки сохранения и генерации
-        ttk.Button(main_frame, text="Сохранить все в JSON", command=self.saveAllJSON).grid(row=9, column=1, pady=5, sticky="w")
-        ttk.Button(main_frame, text="Создать PDF для всех", command=self.createAllPDF).grid(row=9, column=2, pady=5, sticky="w")
+        ttk.Button(main_frame, text="Сохранить все в JSON", command=self.save_all_json).grid(row=9, column=1, pady=5, sticky="w")
+        ttk.Button(main_frame, text="Создать PDF для всех", command=self.create_all_pdf).grid(row=9, column=2, pady=5, sticky="w")
 
         # Статус-бар
         self.status_var = tk.StringVar()
         self.status_label = ttk.Label(main_frame, textvariable=self.status_var, foreground="red")
         self.status_label.grid(row=10, column=0, columnspan=4, pady=5)
 
-    def showStatus(self, message, duration=5000):
+    def show_status(self, message, duration=5000):
         self.status_var.set(message)
         self.root.after(duration, lambda: self.status_var.set(""))
 
-    def startListening(self):
+    def toggle_recording(self):
         if not self.is_recording:
             self.is_recording = True
             self.record_button.configure(text="Остановить запись")
             self.stream = self.audio.open(format=pyaudio.paInt16, channels=1, rate=16000, input=True, frames_per_buffer=8192)
             self.stream.start_stream()
-            threading.Thread(target=self.processAudio, daemon=True).start()
+            threading.Thread(target=self.process_audio, daemon=True).start()
         else:
             self.is_recording = False
             self.record_button.configure(text="Начать запись")
@@ -138,7 +164,7 @@ class MedicalVoiceParser:
                 self.stream.close()
                 self.stream = None
 
-    def processAudio(self):
+    def process_audio(self):
         full_text = self.speak_area.get("1.0", "end-1c")
         if full_text and not full_text.endswith("\n"):
             full_text += "\n"
@@ -162,10 +188,10 @@ class MedicalVoiceParser:
                         self.speak_area.insert("1.0", full_text + partial_text)
                         self.speak_area.see(tk.END)
             except Exception as e:
-                self.showStatus(f"Ошибка обработки аудио: {e}")
+                self.show_status(f"Ошибка обработки аудио: {e}")
                 break
 
-    def convertWordsToNumbers(self, text):
+    def convert_words_to_numbers(self, text):
         words = text.split()
         result = []
         i = 0
@@ -210,7 +236,7 @@ class MedicalVoiceParser:
                 i += 1
         return " ".join(result)
 
-    def extractName(self):
+    def extract_name(self):
         try:
             text = self.speak_area.get("1.0", "end-1c").lower()
             name_pattern = r"(?:пациент|больной)\s+([а-яё]{2,15})\s+([а-яё]{2,15})\s+([а-яё]{2,15})"
@@ -224,16 +250,16 @@ class MedicalVoiceParser:
                     name = f"{last_name.capitalize()} {first_name.capitalize()} {middle_name.capitalize()}"
                     self.name_entry.delete(0, tk.END)
                     self.name_entry.insert(0, name)
-                    self.showStatus("ФИО успешно извлечено", 3000)
+                    self.show_status("ФИО успешно извлечено", 3000)
                     return
-            self.showStatus("ФИО не распознано. Скажите: пациент <Фамилия> <Имя> <Отчество>", 5000)
+            self.show_status("ФИО не распознано. Скажите: пациент <Фамилия> <Имя> <Отчество>", 5000)
         except Exception as e:
-            self.showStatus(f"Ошибка извлечения ФИО: {e}", 5000)
+            self.show_status(f"Ошибка извлечения ФИО: {e}", 5000)
 
-    def extractPressure(self):
+    def extract_pressure(self):
         try:
             text = self.speak_area.get("1.0", "end-1c").lower()
-            text = self.convertWordsToNumbers(text)
+            text = self.convert_words_to_numbers(text)
             pressure_pattern = r"(?:давление|ад)\s*(\d{2,3})\s*(?:на|\/)\s*(\d{2,3})"
             pressure_match = re.search(pressure_pattern, text)
             if pressure_match:
@@ -241,18 +267,18 @@ class MedicalVoiceParser:
                 if 80 <= sys <= 250 and 40 <= dia <= 150:
                     self.pressure_entry.delete(0, tk.END)
                     self.pressure_entry.insert(0, f"{sys}/{dia}")
-                    self.showStatus("Давление успешно извлечено", 3000)
+                    self.show_status("Давление успешно извлечено", 3000)
                 else:
-                    self.showStatus("Давление вне допустимого диапазона (80–250/40–150)", 5000)
+                    self.show_status("Давление вне допустимого диапазона (80–250/40–150)", 5000)
             else:
-                self.showStatus("Давление не распознано. Скажите: давление <Число> на <Число>", 5000)
+                self.show_status("Давление не распознано. Скажите: давление <Число> на <Число>", 5000)
         except Exception as e:
-            self.showStatus(f"Ошибка извлечения давления: {e}", 5000)
+            self.show_status(f"Ошибка извлечения давления: {e}", 5000)
 
-    def extractPulse(self):
+    def extract_pulse(self):
         try:
             text = self.speak_area.get("1.0", "end-1c").lower()
-            text = self.convertWordsToNumbers(text)
+            text = self.convert_words_to_numbers(text)
             pulse_pattern = r"(?:пульс|чсс)\s*(\d{2,3})(?:\s*ударов\s*в\s*минуту)?"
             pulse_match = re.search(pulse_pattern, text)
             if pulse_match:
@@ -260,18 +286,18 @@ class MedicalVoiceParser:
                 if 30 <= pulse <= 200:
                     self.pulse_entry.delete(0, tk.END)
                     self.pulse_entry.insert(0, pulse)
-                    self.showStatus("Пульс успешно извлечён", 3000)
+                    self.show_status("Пульс успешно извлечён", 3000)
                 else:
-                    self.showStatus("Пульс вне допустимого диапазона (30–200)", 5000)
+                    self.show_status("Пульс вне допустимого диапазона (30–200)", 5000)
             else:
-                self.showStatus("Пульс не распознан. Скажите: пульс <Число> [ударов в минуту]", 5000)
+                self.show_status("Пульс не распознан. Скажите: пульс <Число> [ударов в минуту]", 5000)
         except Exception as e:
-            self.showStatus(f"Ошибка извлечения пульса: {e}", 5000)
+            self.show_status(f"Ошибка извлечения пульса: {e}", 5000)
 
-    def extractSaturation(self):
+    def extract_saturation(self):
         try:
             text = self.speak_area.get("1.0", "end-1c").lower()
-            text = self.convertWordsToNumbers(text)
+            text = self.convert_words_to_numbers(text)
             saturation_pattern = r"(?:сатурация|spo2)\s*(\d{2,3})(?:\s*процентов)?"
             saturation_match = re.search(saturation_pattern, text)
             if saturation_match:
@@ -279,27 +305,27 @@ class MedicalVoiceParser:
                 if 50 <= saturation <= 100:
                     self.saturation_entry.delete(0, tk.END)
                     self.saturation_entry.insert(0, saturation)
-                    self.showStatus("Сатурация успешно извлечена", 3000)
+                    self.show_status("Сатурация успешно извлечена", 3000)
                 else:
-                    self.showStatus("Сатурация вне допустимого диапазона (50–100)", 5000)
+                    self.show_status("Сатурация вне допустимого диапазона (50–100)", 5000)
             else:
-                self.showStatus("Сатурация не распознана. Скажите: сатурация <Число> [процентов]", 5000)
+                self.show_status("Сатурация не распознана. Скажите: сатурация <Число> [процентов]", 5000)
         except Exception as e:
-            self.showStatus(f"Ошибка извлечения сатурации: {e}", 5000)
+            self.show_status(f"Ошибка извлечения сатурации: {e}", 5000)
 
-    def addRecord(self):
+    def add_record(self):
         name = self.name_entry.get()
         pressure = self.pressure_entry.get()
         pulse = self.pulse_entry.get()
         saturation = self.saturation_entry.get()
 
         if not all([name, pressure, pulse, saturation]):
-            self.showStatus("Заполните все поля перед добавлением записи", 5000)
+            self.show_status("Заполните все поля перед добавлением записи", 5000)
             return
 
         name_parts = name.split()
         if len(name_parts) != 3:
-            self.showStatus("ФИО должно содержать фамилию, имя и отчество", 5000)
+            self.show_status("ФИО должно содержать фамилию, имя и отчество", 5000)
             return
 
         patient_data = {
@@ -320,24 +346,24 @@ class MedicalVoiceParser:
 
         self.patients.append(patient_data)
         self.tree.insert("", tk.END, values=(name, pressure, pulse, saturation))
-        self.showStatus("Запись добавлена", 3000)
-        self.clearEntries()
+        self.show_status("Запись добавлена", 3000)
+        self.clear_entries()
 
-    def deleteRecord(self):
+    def delete_record(self):
         selected = self.tree.selection()
         if not selected:
-            self.showStatus("Выберите запись для удаления", 5000)
+            self.show_status("Выберите запись для удаления", 5000)
             return
         for item in selected:
             index = self.tree.index(item)
             self.tree.delete(item)
             del self.patients[index]
-        self.showStatus("Запись удалена", 3000)
+        self.show_status("Запись удалена", 3000)
 
-    def editRecord(self):
+    def edit_record(self):
         selected = self.tree.selection()
         if not selected:
-            self.showStatus("Выберите запись для редактирования", 5000)
+            self.show_status("Выберите запись для редактирования", 5000)
             return
         index = self.tree.index(selected[0])
         patient = self.patients[index]
@@ -353,28 +379,28 @@ class MedicalVoiceParser:
         self.saturation_entry.insert(0, patient['hemodynamics']['saturation']['value'])
         self.tree.delete(selected[0])
         del self.patients[index]
-        self.showStatus("Запись загружена для редактирования. Внесите изменения и добавьте заново.", 5000)
+        self.show_status("Запись загружена для редактирования. Внесите изменения и добавьте заново.", 5000)
 
-    def clearEntries(self):
+    def clear_entries(self):
         self.name_entry.delete(0, tk.END)
         self.pressure_entry.delete(0, tk.END)
         self.pulse_entry.delete(0, tk.END)
         self.saturation_entry.delete(0, tk.END)
 
-    def selectFolder(self):
+    def select_folder(self):
         folder = filedialog.askdirectory(title="Выберите папку для отчётов")
         if folder:
             self.folder_entry.delete(0, tk.END)
             self.folder_entry.insert(0, folder)
-            self.showStatus("Папка выбрана", 3000)
+            self.show_status("Папка выбрана", 3000)
 
-    def saveAllJSON(self):
+    def save_all_json(self):
         if not self.patients:
-            self.showStatus("Нет записей для сохранения", 5000)
+            self.show_status("Нет записей для сохранения", 5000)
             return
         folder = self.folder_entry.get()
         if not folder:
-            self.showStatus("Выберите папку для сохранения", 5000)
+            self.show_status("Выберите папку для сохранения", 5000)
             return
         filename = filedialog.asksaveasfilename(
             initialdir=folder, defaultextension=".json", filetypes=[("JSON files", "*.json")]
@@ -382,15 +408,24 @@ class MedicalVoiceParser:
         if filename:
             with open(filename, "w", encoding="utf-8") as f:
                 json.dump(self.patients, f, ensure_ascii=False, indent=4)
-            self.showStatus("Данные сохранены в JSON", 3000)
+            self.show_status("Данные сохранены в JSON", 3000)
 
-    def createAllPDF(self):
+    def create_all_pdf(self):
         folder = self.folder_entry.get()
         if not folder:
-            self.showStatus("Выберите папку для сохранения", 5000)
+            self.show_status("Выберите папку для сохранения", 5000)
             return
         if not self.patients:
-            self.showStatus("Нет записей для создания отчётов", 5000)
+            self.show_status("Нет записей для создания отчётов", 5000)
+            return
+
+        # Проверка наличия typst.exe
+        if not os.path.exists(self.typst_path):
+            self.show_status(
+                f"Файл typst.exe не найден: {self.typst_path}\n"
+                "Скачайте typst.exe с https://typst.app/ и поместите его рядом с программой.",
+                5000
+            )
             return
 
         for patient in self.patients:
@@ -481,12 +516,11 @@ class MedicalVoiceParser:
             """
             with open(typst_path, "w", encoding="utf-8") as f:
                 f.write(typst_content)
-            os.system(f"typst compile {typst_path} {pdf_path}")
+            # Используем typst.exe из той же директории
+            os.system(f'"{self.typst_path}" compile "{typst_path}" "{pdf_path}"')
             os.remove(typst_path)
 
-            os.remove(json_path)
-
-        self.showStatus("PDF-отчёты созданы для всех пациентов", 3000)
+        self.show_status("PDF-отчёты созданы для всех пациентов", 3000)
 
     def __del__(self):
         if self.stream:
