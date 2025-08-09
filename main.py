@@ -45,7 +45,7 @@ class MedicalVoiceParser:
         self.stream = None
 
         # Путь к typst.exe
-        self.typst_path = os.path.join(base_path, "typst.exe")
+        self.typst_path = os.path.normpath(os.path.join(base_path, "typst.exe"))
 
         # Список для хранения данных пациентов
         self.patients = []
@@ -431,9 +431,9 @@ class MedicalVoiceParser:
         for patient in self.patients:
             name = f"{patient['name']['lastName']} {patient['name']['firstName']} {patient['name']['middleName']}"
             filename = re.sub(r'\s+', '_', name.upper())
-            json_path = os.path.join(folder, f"{filename}.json")
-            typst_path = os.path.join(folder, f"{filename}.typ")
-            pdf_path = os.path.join(folder, f"{filename}.pdf")
+            json_path = os.path.normpath(os.path.join(folder, f"{filename}.json"))
+            typst_path = os.path.normpath(os.path.join(folder, f"{filename}.typ"))
+            pdf_path = os.path.normpath(os.path.join(folder, f"{filename}.pdf"))
 
             # Сохранение JSON
             with open(json_path, "w", encoding="utf-8") as f:
@@ -517,8 +517,10 @@ class MedicalVoiceParser:
             with open(typst_path, "w", encoding="utf-8") as f:
                 f.write(typst_content)
             # Используем typst.exe из той же директории
-            os.system(f'"{self.typst_path}" compile "{typst_path}" "{pdf_path}"')
+            os.system(f'{self.typst_path} compile {typst_path} {pdf_path}')
             os.remove(typst_path)
+
+            os.remove(json_path)
 
         self.show_status("PDF-отчёты созданы для всех пациентов", 3000)
 
